@@ -1,6 +1,11 @@
 <?php
 $repositoryServer = 'http://localhost/OSS/server.php';
 $repositoryServer = 'http://stuper.info/codiad/workspace/OSS/server.php';
+$repositoryRootServer = 'http://stuper.info/codiad/workspace/OSS/';
+
+$repositoryServer = 'http://localhost/OSS_server/server.php';
+$repositoryRootServer = 'http://localhost/OSS_server/';
+
 $projectsDir = '.';
 
 header("Content-Type: text/html; charset=UTF-8");
@@ -35,7 +40,7 @@ header("Content-Type: text/html; charset=UTF-8");
       <div class="row">
 
         <?php if((isset($_GET['page']) && $_GET['page'] === 'store') || isset($_GET["openSourceProject"])|| isset($_GET["category"])) { ?>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <div class="bs-sidebar hidden-print" role="complementary">
             <ul class="nav nav-pills nav-stacked">
                 <?php
@@ -89,7 +94,7 @@ header("Content-Type: text/html; charset=UTF-8");
         <?php                 
         }  
         else {?>   
-            <div class="col-md-9" role="main">
+            <div class="col-md-10" role="main">
               <?php
                 if(!isset($_GET["openSourceProject"])) {
                     $openSourceProjects = array();
@@ -100,6 +105,13 @@ header("Content-Type: text/html; charset=UTF-8");
                     }
                   ?><ul class="OSProjects"><?php
                   foreach($openSourceProjects as $openSourceProject){
+                  //Download img
+                  $projectImg = $openSourceProject['img'];
+                  if(!is_file($projectImg)) {
+                      if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryRootServer, $projectImg)))){
+                        file_put_contents($projectImg, $imgContent);
+                      }
+                  }                      
                   ?>
                       <li>
                         <a href="<?php if(isset($_GET["category"])){echo '?openSourceProject='.$openSourceProject['name'];}else{echo $openSourceProject['url'];}?>">
@@ -118,6 +130,7 @@ header("Content-Type: text/html; charset=UTF-8");
                 
                 if(isset($_GET["openSourceProject"])) {
                   $version = 'last';
+                  $projectType = 'zip';
                   $projectName=$_GET["openSourceProject"];
                   if(isset($_GET["version"])){
                     $version = $_GET["version"];
@@ -129,6 +142,16 @@ header("Content-Type: text/html; charset=UTF-8");
                       $version=$openSourceProject['version'];
                       $projectUrl = $openSourceProject['url'];
                       $projectImg = $openSourceProject['img'];
+                      if(isset($openSourceProject['type'])){
+                      	$projectType = $openSourceProject['type'];
+                      }
+                      
+                      //Download img
+                      if(!is_file($projectImg)) {
+                          if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryRootServer, $projectImg)))){
+                            file_put_contents($projectImg, $imgContent);
+                          }
+                      }
                       
                       ?><div class="OSProject">
                           <div class="OSProjectHeader">
@@ -221,13 +244,20 @@ header("Content-Type: text/html; charset=UTF-8");
                               </div>
                               <?php
                               if(isset($openSourceProject['screenshoots']) 
-                                && count($openSourceProject['screenshoots']) > 0) { ?>                        
+                                && count($openSourceProject['screenshoots']) > 0) { ?>     
+                                                   
                               <div id="sceenShootsContainer">
-                                <h3>Copies d'écran</h3>
+                                <h3>Screenshoots</h3>
                                 <div>
                                 <?php
-                                  foreach($openSourceProject['screenshoots'] as $screenshoot) {
-                                    ?><img width="100%" src="<?php echo $screenshoot; ?>" /><?php
+								foreach($openSourceProject['screenshoots'] as $screenshoot) {
+									//Download img
+									if(!is_file($screenshoot)) {
+										if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryRootServer, $screenshoot)))){
+											file_put_contents($screenshoot, $imgContent);
+										}
+									}
+                                    ?><img width="100%" alt="screenshoot" src="<?php echo $screenshoot; ?>" /><?php
                                   }?>
                                 </div>
                               </div>  
@@ -295,7 +325,11 @@ header("Content-Type: text/html; charset=UTF-8");
             $.ajax(
                     {
                         type: 'GET',
-                        url: "install.php?version=" + "<?php echo $version; ?>" + "&openSourceProject=" + "<?php echo $projectName; ?>" + "&url=" + "<?php echo urlencode($projectUrl); ?>" + "&img=" + "<?php echo urlencode($projectImg); ?>",
+                        url: "install.php?version=" + "<?php echo $version; ?>" 
+                        	+ "&openSourceProject=" + "<?php echo $projectName; ?>" 
+                        	+ "&url=" + "<?php echo urlencode($projectUrl); ?>"
+                        	+ "&type=" + "<?php echo urlencode($projectType); ?>"  
+                        	+ "&img=" + "<?php echo urlencode($projectImg); ?>",
                         async: true,
                         dataType: "json",
                         success:
@@ -311,7 +345,7 @@ header("Content-Type: text/html; charset=UTF-8");
                                 $( "#OSProjectExecuteButton" ).attr('disabled', false); 
                                 
                                 //Demonstration
-                                    $( "#OSProjectExecuteButton" ).attr('disabled', true); 
+                                //$( "#OSProjectExecuteButton" ).attr('disabled', true); 
                                 
                                 $( "#OSProjectExecuteButton" ).show();
                                 $( "#OSProjectDeleteButton" ).show();

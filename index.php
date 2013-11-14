@@ -1,10 +1,5 @@
 <?php
-$repositoryServer = 'http://localhost/OSS/server.php';
-$repositoryServer = 'http://stuper.info/codiad/workspace/OSS/server.php';
-$repositoryRootServer = 'http://stuper.info/codiad/workspace/OSS/';
-
-$repositoryServer = 'http://localhost/OSS_server/server.php';
-$repositoryRootServer = 'http://localhost/OSS_server/';
+$repositoryServer = 'http://opensourcestore.info/s/';
 
 $projectsDir = '.';
 
@@ -31,29 +26,46 @@ header("Content-Type: text/html; charset=UTF-8");
     <nav class="navbar navbar-default" role="navigation">
       <!-- Brand and toggle get grouped for better mobile display -->
       <div class="navbar-header">
+      <div class="container">
+      	<a class="navbar-brand" href="index.php"> <img src="img/OSS.png" width="25px" height="25px"></a>
         <a class="navbar-brand" href="?page=tools">Tools</a>
         <a class="navbar-brand" href="?page=store">Store</a>
+      </div>
       </div>    
     </nav>
 
     <div class="container bs-docs-container"/>
       <div class="row">
 
-        <?php if((isset($_GET['page']) && $_GET['page'] === 'store') || isset($_GET["openSourceProject"])|| isset($_GET["category"])) { ?>
+        <?php 
+        $storeError = false;
+        if((isset($_GET['page']) && $_GET['page'] === 'store') || isset($_GET["openSourceProject"])|| isset($_GET["category"])) { 
+        	if(false !== ($responseJson = @file_get_contents(sprintf($repositoryServer.'?action=%s', 'showCategories')))){?>
         <div class="col-md-2">
           <div class="bs-sidebar hidden-print" role="complementary">
-            <ul class="nav nav-pills nav-stacked">
+          	<ul class="nav nav-pills nav-stacked">
                 <?php
-                  if(false !== ($responseJson = file_get_contents(sprintf($repositoryServer.'?action=%s', 'showCategories')))){
                     $categories = json_decode($responseJson, true);
                     foreach($categories as $category){
                     ?><li><a href="?category=<?php echo urlencode($category);?>"><?php echo urlencode($category);?></a></li><?php
                   }
-                }?>
-            </ul>
-            </div>
+                ?>
+             </ul>
+           </div>
         </div>
-        <?php } ?>
+        <?php 
+			}else{
+				?>
+				<div class="col-md-12">
+					<h2><span class="glyphicon glyphicon-warning-sign redSpan" ></span>Unable to join the open source store<span class="glyphicon glyphicon-warning-sign redSpan" ></h2>
+					<div>
+					The open source store is unjoinable, check your network or configuration.
+					</div>
+				</div>
+				<?php 
+				$storeError = true;
+			}
+		}?>
         
         <!-- show my apps -->
         <?php 
@@ -93,13 +105,15 @@ header("Content-Type: text/html; charset=UTF-8");
         </div>
         <?php                 
         }  
-        else {?>   
+        else {?>  
+        <!--  Show store apps --> 
+        <?php if(false === $storeError) { ?>
             <div class="col-md-10" role="main">
               <?php
                 if(!isset($_GET["openSourceProject"])) {
                     $openSourceProjects = array();
                     if(isset($_GET["category"])) {
-                      if(false !== ($responseJson = file_get_contents(sprintf($repositoryServer.'?action=%s&category=%s', 'showOpenSourceProjects', $_GET["category"])))){
+                      if(false !== ($responseJson = @file_get_contents(sprintf($repositoryServer.'?action=%s&category=%s', 'showOpenSourceProjects', $_GET["category"])))){
                           $openSourceProjects = json_decode($responseJson, true);                    
                       }
                     }
@@ -108,7 +122,7 @@ header("Content-Type: text/html; charset=UTF-8");
                   //Download img
                   $projectImg = $openSourceProject['img'];
                   if(!is_file($projectImg)) {
-                      if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryRootServer, $projectImg)))){
+                      if(false !== ($imgContent = @file_get_contents(sprintf('%s/%s', $repositoryServer, $projectImg)))){
                         file_put_contents($projectImg, $imgContent);
                       }
                   }                      
@@ -135,7 +149,7 @@ header("Content-Type: text/html; charset=UTF-8");
                   if(isset($_GET["version"])){
                     $version = $_GET["version"];
                   }
-                  if(false !== ($responseJson = file_get_contents(sprintf($repositoryServer.'?action=%s&openSourceProject=%s&version=%s', 'showOpenSourceProject', urlencode($_GET["openSourceProject"]), $version)))){
+                  if(false !== ($responseJson = @file_get_contents(sprintf($repositoryServer.'?action=%s&openSourceProject=%s&version=%s', 'showOpenSourceProject', urlencode($_GET["openSourceProject"]), $version)))){
                       $openSourceProject = json_decode($responseJson, true);
                       
                       $projectName=strtolower($openSourceProject['name']);
@@ -148,7 +162,7 @@ header("Content-Type: text/html; charset=UTF-8");
                       
                       //Download img
                       if(!is_file($projectImg)) {
-                          if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryRootServer, $projectImg)))){
+                          if(false !== ($imgContent = @file_get_contents(sprintf('%s/%s', $repositoryServer, $projectImg)))){
                             file_put_contents($projectImg, $imgContent);
                           }
                       }
@@ -201,15 +215,22 @@ header("Content-Type: text/html; charset=UTF-8");
                           </div>
                           <div class="divclear" />
                           <div>
+	                          	<div class="redSpan" id="errorContainer">
+	                              	<h3><span class="glyphicon glyphicon-warning-sign" >Error</h3>
+	                              	<div id="errorMessage">
+	                              		User and store package url are different
+	                              	</div>
+	                            </div>
                               <div>
-                                <h3>Informations générales</h3>
-                                  Nom de l'application: <?php echo $openSourceProject['name'];?>
+                              	
+                                <h3>General informations</h3>
+                                  Application name: <?php echo $openSourceProject['name'];?>
                                   <br/>
-                                  Auteur: <?php echo $openSourceProject['author'];?>
+                                  Author: <?php echo $openSourceProject['author'];?>
                                   <br/>
-                                  <a href="<?php echo $openSourceProject['url'];?>">Lien du package</a>
+                                  <a href="<?php echo $openSourceProject['url'];?>">Package link</a>
                                   <br/>
-                                  <a href="<?php echo $openSourceProject['link'];?>">Site web officiel</a>
+                                  <a href="<?php echo $openSourceProject['link'];?>">Official Website</a>
                                   <br/>
                                   Version: <?php echo $openSourceProject['version'];?>
                                   <br/>
@@ -242,10 +263,26 @@ header("Content-Type: text/html; charset=UTF-8");
                                   <?php echo $openSourceProject['description'];?>
                                 </div>
                               </div>
+                              
+                              <?php
+                              if(isset($openSourceProject['features']) 
+                                && count($openSourceProject['features']) > 0) { ?>     
+                              <div id="sceenShootsContainer">
+                                <h3>Features</h3>
+                                <ul>
+                                <?php
+								foreach($openSourceProject['features'] as $feature) {
+									?><li><?php echo $feature;?></li><?php
+                                  }?>
+                                </ul>
+                              </div>  
+                              <?php
+                              }
+                              ?> 
+                                                            
                               <?php
                               if(isset($openSourceProject['screenshoots']) 
                                 && count($openSourceProject['screenshoots']) > 0) { ?>     
-                                                   
                               <div id="sceenShootsContainer">
                                 <h3>Screenshoots</h3>
                                 <div>
@@ -253,7 +290,7 @@ header("Content-Type: text/html; charset=UTF-8");
 								foreach($openSourceProject['screenshoots'] as $screenshoot) {
 									//Download img
 									if(!is_file($screenshoot)) {
-										if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryRootServer, $screenshoot)))){
+										if(false !== ($imgContent = file_get_contents(sprintf('%s/%s', $repositoryServer, $screenshoot)))){
 											file_put_contents($screenshoot, $imgContent);
 										}
 									}
@@ -275,6 +312,7 @@ header("Content-Type: text/html; charset=UTF-8");
                   }              
                 }?>
               </div>
+              <?php } ?>
             </div>
         <?php } ?>
 
@@ -334,25 +372,25 @@ header("Content-Type: text/html; charset=UTF-8");
                         dataType: "json",
                         success:
                             function (data) {
-                                console.log('installation terminée');
-                                clearInterval(getStatusInterval);
-                                installationOver = true;
-                                projectFolder = data.name;
-                                console.log(projectFolder);
-
-                                $( "#OSProjectDownloadButton" ).hide();
-                                $( "#OSProjectDeleteButton" ).attr('disabled', false);
-                                $( "#OSProjectExecuteButton" ).attr('disabled', false); 
-                                
-                                //Demonstration
-                                //$( "#OSProjectExecuteButton" ).attr('disabled', true); 
-                                
-                                $( "#OSProjectExecuteButton" ).show();
-                                $( "#OSProjectDeleteButton" ).show();
-
-                                $( "#OSProjectProgressBar").css('visibility', 'hidden');
-                                //do something - your long process is finished
-                            }
+                        		clearInterval(getStatusInterval);
+                            	if(typeof(data.status) != "undefined" && data.status == 0){
+	                                installationOver = true;
+	                                projectFolder = data.name;
+	                                $( "#OSProjectDownloadButton" ).hide();
+	                                $( "#OSProjectDeleteButton" ).attr('disabled', false);
+	                                $( "#OSProjectExecuteButton" ).attr('disabled', false);
+	                                $( "#OSProjectExecuteButton" ).show();
+	                                $( "#OSProjectDeleteButton" ).show();
+	                                $( "#OSProjectProgressBar").css('visibility', 'hidden');
+                            	}else{
+                             	   $("#errorContainer").show();
+                            	   $("#errorMessage").text(data.message);
+                            	}
+                            },
+                       error: function (jqXHR, textStatus, errorThrown ) {
+                    	   $("#errorContainer").show();
+                    	   $("#errorMessage").text(textStatus);
+                       },
                     });
             $("#OSProjectProgressValue").width(0 + '%');
             $( "#OSProjectProgressBar").css('visibility', 'visible');

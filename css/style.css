@@ -85,3 +85,8 @@ ul.OSProjects li a { display: block; padding: 10px;  }
 .divclear{
 	clear:both;
 }
+
+#errorContainer{
+	display:none;	
+}
+

@@ -1,11 +1,25 @@
 <?php
-$progressFile = 'progress.json';
+
+/*
+ * Disable all unsupported error messages
+ */
+error_reporting(0);
+
+$repositoryServer = 'http://opensourcestore.info/s/';
+
+$progressFile = sprintf('progress_%s_%s.json', $_GET['openSourceProject'], $_GET['version']);
+
 set_time_limit(0);
 if(isset($_GET['action']) && $_GET['action'] == 'getProgress'){
-  $progressFileJson = json_decode(file_get_contents($progressFile), true);
+  if(!is_file($progressFile)){
+  	echo json_encode(array('progress' => 100));
+  	return;
+  }
+  $progressFileJson = json_decode(@file_get_contents($progressFile), true);
   if(is_array($progressFileJson)){
     echo json_encode(array('progress' => (int)$progressFileJson['progress']));
   }
+  @unlink($progressFile);
   return;
 }
 
@@ -20,9 +34,8 @@ if(isset($_GET['action']) && $_GET['action'] == 'delete'){
     $mainDirName = sprintf('%s_%s', $name, $version);
     if(is_dir($mainDirName)){
         $fileCount = getFileCount($mainDirName);
-        rrmdir($mainDirName, $progressFile, $fileCount+1);
-        if(!is_dir($mainDirName)){
-          echo json_encode(array('status' => 0));
+        if(false !== rrmdir($mainDirName, $progressFile, $fileCount+1)){
+        	echo json_encode(array('status' => 0));
         }else{
           echo json_encode(array('status' => 1));
         }
@@ -53,6 +66,10 @@ function getFileCount($path) {
 
 /*
 * Recursive rmdir
+* 
+* @param $dir : the dir to remove
+* @param $progressFile : the file to update
+* @param $fileCount : the number of all files 
 */
  function rrmdir($dir, $progressFile = null, $fileCount = null) {
    if (is_dir($dir)) {
@@ -60,32 +77,43 @@ function getFileCount($path) {
      foreach ($objects as $object) {
        if ($object != "." && $object != "..") {
          if (filetype($dir."/".$object) == "dir") {
-           rrmdir($dir."/".$object, $progressFile, $fileCount); 
+           if(false === rrmdir($dir."/".$object, $progressFile, $fileCount)){
+           	return false;
+           } 
           }
          else {
-            unlink($dir."/".$object);
-            if($progressFile != null){
-              $oldprogressFileJson = json_decode(file_get_contents($progressFile), true);
-              $oldprogressFileJson['progress'] += 100/$fileCount;
-              file_put_contents($progressFile, json_encode($oldprogressFileJson));
+            if(false !== @unlink($dir."/".$object)){
+	            if($progressFile != null){
+	              $oldprogressFileJson = json_decode(file_get_contents($progressFile), true);
+	              $oldprogressFileJson['progress'] += 100/$fileCount;
+	              file_put_contents($progressFile, json_encode($oldprogressFileJson));
+	            }
+            }else{
+            	return false;
             }
           }
        }
      }
    reset($objects);
-   rmdir($dir);
-   if($progressFile != null){
-    $oldprogressFileJson = json_decode(file_get_contents($progressFile), true);
-    $oldprogressFileJson['progress'] += 100/$fileCount;
-    file_put_contents($progressFile, json_encode($oldprogressFileJson));
-  }
+   if(false !== @rmdir($dir)){
+	   if($progressFile != null){
+	    $oldprogressFileJson = json_decode(file_get_contents($progressFile), true);
+	    $oldprogressFileJson['progress'] += 100/$fileCount;
+	    file_put_contents($progressFile, json_encode($oldprogressFileJson));
+	  }
+	  return true;
+   }
+	return false;
  }
 }
 
 $projectName = sprintf("%s_%s", $_GET['openSourceProject'], $_GET['version']);
 
 if(is_dir($projectName)){
-    rrmdir($projectName);
+    if(!rrmdir($projectName)){
+    	echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'Unable to delete old project dir (write rights ?).'));
+    	return;    	
+    }
 }
 
 $zipUrl = $_GET['url'];
@@ -93,9 +121,37 @@ $packageExtension = $_GET['type'];
 
 file_put_contents($progressFile, json_encode(array('progress' => 0)));
 
+/*
+ * Download package information from the store server
+*/
+if(false === ($responseJson = @file_get_contents(sprintf($repositoryServer.'?action=%s&openSourceProject=%s&version=%s', 'showOpenSourceProject', urlencode($_GET["openSourceProject"]), $_GET['version'])))){
+	echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'Unable to access store. Wait. If persist, change your store.'));
+	return;
+}
+
+/*
+ * Control of package url : check if url submitted by user (ajax) equals url given by the store
+*/
+$openSourceProject = json_decode($responseJson, true);
+if(!isset($openSourceProject['url']) || $openSourceProject['url'] !== $zipUrl) {
+	echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'User and store package url are differents, please refresh project page.'));
+	return;	
+}
+
+/*
+ * Control if https is used and if module openssl is actived
+ */
+if(substr($zipUrl, 0, 5) === 'https' && !extension_loaded('openssl')){
+	echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'The installation of the package need the php extension "php_openssl".'));
+	return;	
+}
+
 $zipHeaders = get_headers($zipUrl, 1);
 
-// Determine content lenght 
+/*
+ * Determine content lenght
+ * for the % advancement
+ */ 
 $length = 0;
 if(isset($zipHeaders['Content-Length'])){
   if (is_array($zipHeaders['Content-Length'])) {
@@ -105,8 +161,6 @@ if(isset($zipHeaders['Content-Length'])){
     $length = $zipHeaders['Content-Length'];
    }
 }
-
-
 
 $handle = fopen($zipUrl, "rb");
 $zipContent = '';
@@ -125,6 +179,14 @@ fclose($handle);
 $tempDir = "temp";
 
 if($packageExtension === 'zip'){
+	/*
+	 * Test if ZipArchive class exists
+	 */
+	if(!class_exists('ZipArchive')){
+		echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'The installation of the zip package need the class "ZipArchive" (PHP 5 >= 5.2.0, PECL zip >= 1.1.0).'));
+		return;
+	}
+	
 	file_put_contents("temp.zip", $zipContent);
 	file_put_contents($progressFile, json_encode(array('progress' => 55)));
 	//var_export($zipContent);
@@ -192,6 +254,10 @@ if($packageExtension === 'zip'){
 	    	 if(is_dir($tempDir)){
 		        rrmdir($tempDir);
 	    	 }
+
+	        /*
+	         * Try 3 times to rename temp project to real name
+	        */	        
 	        $try = 0;
 	        while(true !== @rename(sprintf("%s/%s", $projectName, $dirAlone), $tempDir )
 	        		&& $try <= 3
@@ -211,33 +277,26 @@ if($packageExtension === 'php'){
 }
 
 if($packageExtension === 'tar.gz' ){
+	/*
+	 * Test if PharData class exists
+	*/
+	if(!class_exists('PharData')){
+		echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'The installation of the zip package need the class "PharData" (PHP >= 5.3.0, PECL phar >= 2.0.0).'));
+		return;
+	}
+	
 	mkdir($projectName);
 	
-// 	switch($packageExtension){
-// 		case 'tar.bz2':
-// 			file_put_contents("temp.tar.bz2", $zipContent);
-// 			$file = "temp.tar.bz2";
-// 			$bz = bzopen($file, "r") or die("Impossible d'ouvrir le fichier $file");
-// 			$decompressed_file = '';
-// 			while (!feof($bz)) {
-// 				$decompressed_file .= bzread($bz, 4096);
-// 			}
-// 			bzclose($bz);
-// 			file_put_contents('temp.tar', $decompressed_file);	 
-// 			break;
-// 		 case 'tar.gz':
-		 	file_put_contents('temp.tar',gzdecode ($zipContent));
-// 	 	break;	
-// 		default:
-// 			return;
-// 		break;		 
-// 	}
-
+	if(false === @file_put_contents('temp.tar',gzdecode ($zipContent))){
+		echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'Unable to create temp.tar file.'));
+		return;		
+	}
+	
 	$phar = new PharData('temp.tar');
 	$phar->extractTo($projectName); // extract all files
 	
 	$files = scandir($projectName, SCANDIR_SORT_ASCENDING );
-	var_export($files);
+
 	$nbFiles = count($files);
 	if($nbFiles === 3 ){// main dir + '..' + '.'
 		$mainDirName = end($files);
@@ -247,6 +306,9 @@ if($packageExtension === 'tar.gz' ){
 	
 		file_put_contents($progressFile, json_encode(array('progress' => 85)));
 		 
+		/*
+		 * Try 3 times to rename temp project to real name 
+		 */
 		$try = 0;
 		while(true !== @rename(sprintf("%s/%s", $projectName, $mainDirName), $tempDir )
 				&& $try <= 3
@@ -254,17 +316,20 @@ if($packageExtension === 'tar.gz' ){
 			sleep(1);
 			$try++;
 		}
-	
+
+		if(is_dir(sprintf("%s/%s", $projectName, $mainDirName))){
+			echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'Unable to rename project dir to temp dir.'));
+			return;
+		}
+		
 		rrmdir($projectName);
-		rename ($tempDir, $projectName);
+		
+		if(false === rename ($tempDir, $projectName)){
+			echo json_encode(array('progress' => 0, 'status' => 1, 'message' => 'Unable to rename temp dir to project dir.'));
+			return;			
+		}
 	}	
 }
-
-//Demonstration
-// rrmdir($projectName);
-// mkdir($projectName);
-// file_put_contents(sprintf('%s/%s', $projectName, 'index.php'), '<?php header("Content-Type: text/html; charset=UTF-8"); echo "Afin d’éviter un piratage évident, les programmes ne sont pas opérationnels pour la démonstration d’OSS.";');
-
 
 // Copie of img logo
 if(false !== ($img = file_get_contents($_GET['img']))){
@@ -272,7 +337,10 @@ if(false !== ($img = file_get_contents($_GET['img']))){
 }
 
 file_put_contents($progressFile, json_encode(array('progress' => 100)));
-echo json_encode(array('name' => $projectName));
+echo json_encode(array('name' => $projectName, 'status' => 0));
+
+@unlink($progressFile);
+
 return;
 
 
